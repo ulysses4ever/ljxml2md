@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase        #-}
 
 module Main where
 
@@ -49,14 +50,34 @@ transform :: Element -> Pandoc
 transform (Element "event" _attrs children) = 
     mconcat $ map elemToDoc $ catMaybes $ map nodeToElem children
 
+-- List of XML elements we want to throw away
+blockList :: [Text]
+blockList = ["can_comment", "logtime"]
+
+-- Some elements should be renamed for various external reasons
+rename :: Text -> Text
+rename = \case
+    "subject" -> "title"
+    "url"     -> "oldurl"
+    "ditemid" -> "lj_url_id"
+    "itemid"  -> "abs_id"
+    other     -> other
+
 -- Main workhorse: turn one LJ XML element into a piece of Pandoc AST
 elemToDoc :: Element -> Pandoc
 elemToDoc (Element name _attrs children) = fromMaybe mempty mRes
     where
     mChildText = listToMaybe children >>= mGetNodeText
     mRes = case name of
-        "event" -> fmap htmlToDoc mChildText 
-        elem    -> flip (setMeta (nameLocalName elem)) mempty <$> mChildText 
+        "event" 
+            -> fmap htmlToDoc mChildText 
+
+        el | not $ name `elem` blockList 
+            -> flip (setMeta $ rename name) mempty <$> mChildText 
+            where
+            name = nameLocalName el
+
+        _   -> Nothing
 
 -- LJ doesn't store anything interesting in comments, attributes, etc.
 -- We'll need text, of course, but that will come later in the traversal
