@@ -3,8 +3,9 @@
 module Main where
 
 {- 
- - This should be compiled in a binary and piped in the XML format of LiveJournal /
- - Dremwidth. You'll get a markdown file with all metadata embedded as a YAML preface.
+ - This should be compiled in a binary (or run via runhaskell) and piped in 
+ - the XML format of LiveJournal / Dreamwidth. You'll get a markdown file with all 
+ - metadata embedded as a YAML preface. HTML text of the post is converted into MD.
  -}
 
 import qualified Data.Map        as M
@@ -43,33 +44,33 @@ main = do
     -- print md
     (T.putStrLn . T.fromStrict) =<< (runIOorExplode $ writeMd md)
 
--- We'll turn out <document> into a Pandoc document
+-- Match the root element (<entry>) and turn the contents into Pandoc AST
 transform :: Element -> Pandoc
-transform (Element _name _attrs children) = 
+transform (Element "event" _attrs children) = 
     mconcat $ map elemToDoc $ catMaybes $ map nodeToElem children
 
---   setMeta "id" ("5"::String) $ doc
---     $  header 1 (text "Hello!")
---     <> para (emph (text "hello world") <> text ".")
+-- Main workhorse: turn one LJ XML element into a piece of Pandoc AST
+elemToDoc :: Element -> Pandoc
+elemToDoc (Element name _attrs children) = fromMaybe mempty mRes
+    where
+    mChildText = listToMaybe children >>= mGetNodeText
+    mRes = case name of
+        "event" -> fmap htmlToDoc mChildText 
+        elem    -> flip (setMeta (nameLocalName elem)) mempty <$> mChildText 
 
--- LJ doesn't sstore anything interesting in comments, attributes, etc.
+-- LJ doesn't store anything interesting in comments, attributes, etc.
 -- We'll need text, of course, but that will come later in the traversal
 nodeToElem :: Node -> Maybe Element
 nodeToElem (NodeElement e) = Just e
 nodeToElem _               = Nothing
 
-getNodeText :: Node -> Maybe Text
-getNodeText (NodeContent t) = Just t
-getNodeText _               = Nothing
+-- Plumbing
+mGetNodeText :: Node -> Maybe Text
+mGetNodeText (NodeContent t) = Just t
+mGetNodeText _               = Nothing
 
-mHtmlToDoc :: Maybe Text -> Pandoc
-mHtmlToDoc Nothing = mempty
-mHtmlToDoc (Just t) = fromRight mempty . runPure $ readHtml def t
-
-elemToDoc :: Element -> Pandoc
-elemToDoc (Element name _attrs children) =
-    case name of
-        "event" -> listToMaybe children >>= getNodeText & mHtmlToDoc
-        {- TODO: process more node types -}
-        _       -> mempty
+htmlToDoc :: Text -> Pandoc
+htmlToDoc t =
+    fromRight (error "htmlToDoc: fail to parse HTML") . runPure $
+    readHtml def t
 
