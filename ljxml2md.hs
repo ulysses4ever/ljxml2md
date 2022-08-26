@@ -1,11 +1,26 @@
 {-# LANGUAGE OverloadedStrings #-}
+
+module Main where
+
+{- 
+ - This should be compiled in a binary and piped in the XML format of LiveJournal /
+ - Dremwidth. You'll get a markdown file with all metadata embedded as a YAML preface.
+ -}
+
 import qualified Data.Map        as M
-import           Text.Hamlet.XML
-import           Text.XML
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy as T
-import           Text.Pandoc
-import           Text.Pandoc.Builder
+
+import Data.Text (Text)
+import Data.Maybe
+import Data.Either
+import Data.Function
+import Control.Arrow
+import Text.Hamlet.XML
+import Text.Pandoc
+import Text.Pandoc.Builder
+import Text.XML
+
 
 main :: IO ()
 main = do
@@ -30,36 +45,31 @@ main = do
 
 -- We'll turn out <document> into a Pandoc document
 transform :: Element -> Pandoc
-transform (Element _name attrs children) = 
-  setMeta "id" ("5"::String) $ doc
-    $  header 1 (text "Hello!")
-    <> para (emph (text "hello world") <> text ".")
+transform (Element _name _attrs children) = 
+    mconcat $ map elemToDoc $ catMaybes $ map nodeToElem children
 
-{-
+--   setMeta "id" ("5"::String) $ doc
+--     $  header 1 (text "Hello!")
+--     <> para (emph (text "hello world") <> text ".")
 
--- Leftover from xml-conduit example at https://www.yesodweb.com/book/xml
+-- LJ doesn't sstore anything interesting in comments, attributes, etc.
+-- We'll need text, of course, but that will come later in the traversal
+nodeToElem :: Node -> Maybe Element
+nodeToElem (NodeElement e) = Just e
+nodeToElem _               = Nothing
 
-goNode :: Node -> [Node]
-goNode (NodeElement e) = [NodeElement $ goElem e]
-goNode (NodeContent t) = [NodeContent t]
-goNode (NodeComment _) = [] -- hide comments
-goNode (NodeInstruction _) = [] -- and hide processing instructions too
+getNodeText :: Node -> Maybe Text
+getNodeText (NodeContent t) = Just t
+getNodeText _               = Nothing
 
--- convert each source element to its XHTML equivalent
-goElem :: Element -> Element
-goElem (Element "para" attrs children) =
-    Element "p" attrs $ concatMap goNode children
-goElem (Element "em" attrs children) =
-    Element "i" attrs $ concatMap goNode children
-goElem (Element "strong" attrs children) =
-    Element "b" attrs $ concatMap goNode children
-goElem (Element "image" attrs _children) =
-    Element "img" (fixAttr attrs) [] -- images can't have children
-  where
-    fixAttr mattrs
-        | "href" `M.member` mattrs  = M.delete "href" $ M.insert "src" (mattrs M.! "href") mattrs
-        | otherwise                 = mattrs
-goElem (Element name attrs children) =
-    -- don't know what to do, just pass it through...
-    Element name attrs $ concatMap goNode children
--}
+mHtmlToDoc :: Maybe Text -> Pandoc
+mHtmlToDoc Nothing = mempty
+mHtmlToDoc (Just t) = fromRight mempty . runPure $ readHtml def t
+
+elemToDoc :: Element -> Pandoc
+elemToDoc (Element name _attrs children) =
+    case name of
+        "event" -> listToMaybe children >>= getNodeText & mHtmlToDoc
+        {- TODO: process more node types -}
+        _       -> mempty
+
