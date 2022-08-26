@@ -17,6 +17,7 @@ import Data.Text (Text)
 import Data.Maybe
 import Data.Either
 import Data.Function
+import Debug.Trace
 import Control.Arrow
 import Text.Hamlet.XML
 import Text.Pandoc
@@ -45,14 +46,17 @@ main = do
     -- print md
     (T.putStrLn . T.fromStrict) =<< (runIOorExplode $ writeMd md)
 
--- Match the root element (<entry>) and turn the contents into Pandoc AST
+-- Transform an element by turning its children into Pandoc AST
 transform :: Element -> Pandoc
-transform (Element "event" _attrs children) = 
-    mconcat $ map elemToDoc $ catMaybes $ map nodeToElem children
+transform (Element name _attrs children) = 
+    mconcat .
+    map elemToDoc .
+    catMaybes $
+    map nodeToElem children
 
 -- List of XML elements we want to throw away
 blockList :: [Text]
-blockList = ["can_comment", "logtime"]
+blockList = ["can_comment", "logtime", "personifi_tags"]
 
 -- Some elements should be renamed for various external reasons
 rename :: Text -> Text
@@ -65,17 +69,20 @@ rename = \case
 
 -- Main workhorse: turn one LJ XML element into a piece of Pandoc AST
 elemToDoc :: Element -> Pandoc
-elemToDoc (Element name _attrs children) = fromMaybe mempty mRes
+elemToDoc el@(Element name _attrs children) = fromMaybe mempty mRes
     where
     mChildText = listToMaybe children >>= mGetNodeText
     mRes = case name of
-        "event" 
-            -> fmap htmlToDoc mChildText 
+        "event" -> 
+            fmap htmlToDoc mChildText 
 
-        el | not $ name `elem` blockList 
-            -> flip (setMeta $ rename name) mempty <$> mChildText 
+        "props" ->
+            Just . transform $ el
+
+        _ | not $ nameTxt `elem` blockList -> 
+            flip (setMeta $ rename nameTxt) mempty <$> mChildText 
             where
-            name = nameLocalName el
+            nameTxt = nameLocalName name
 
         _   -> Nothing
 
