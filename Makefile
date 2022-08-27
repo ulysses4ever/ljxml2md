@@ -7,6 +7,9 @@ all: run
 run:
 	$(SH) --run "runghc $(SRC)"
 
+compile:
+	$(SH) --run "ghc -O2 $(SRC); rm *.hi *.o"
+
 ghcid:
 	$(SH) -p ghcid --run "ghcid $(SRC)"
 
