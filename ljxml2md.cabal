@@ -1,0 +1,18 @@
+cabal-version:      3.0
+name:               ljxml2md
+version:            0.1.0.0
+author:             Artem Pelenitsyn
+maintainer:         a.pelenitsyn@gmail.com
+
+executable ljxml2md
+    main-is:          ljxml2md.hs
+    build-depends:    base
+                    , containers 
+                    , pandoc
+                    , pandoc-types
+                    , text
+                    , xml-conduit 
+                    , xml-hamlet
+    hs-source-dirs:   .
+    default-language: Haskell2010
+
